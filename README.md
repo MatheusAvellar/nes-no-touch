@@ -5,7 +5,7 @@ by [aeveis](https://aeveis.itch.io), "[No Touch](https://aeveis.itch.io/no-touch
 NES!
 
 <p align="center">
-  <img alt="screen capture" src="https://i.imgur.com/AZ13Eep.gif" />
+  <img alt="screen capture" src="https://i.imgur.com/aUzyGBQ.gif" />
 </p>
 
 ## FAQ

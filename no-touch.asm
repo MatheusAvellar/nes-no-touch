@@ -1,4 +1,5 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;   Constants    ;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;
                     ;;;;
 PPUCTRL   = $2000   ;;;; PPU Control Register 1
@@ -32,7 +33,7 @@ PPUDATA   = $2007   ;;;; PPU Memory Data
 OAMDMA    = $4014   ;;;; DMA Access to Sprite Memory
 ;         = $4015   ;;;; Enable/Disable Individual Sound Channels
 JOYSTICK1 = $4016   ;;;; Joystick 1
-JOYSTICK2 = $4017   ;;;; Joystick 2 ?
+JOYSTICK2 = $4017   ;;;; Joystick 2
                     ;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;
@@ -172,6 +173,10 @@ LoadPlayer:
 LoadSpritesLoop:
   lda playersprite, x       ; load data from address (playersprite.right + x)
   sta $0200, x              ; store into RAM address ($0200 + x)
+
+  lda catsprite, x
+  sta $0210, x
+
   inx                       ; X = X + 1
   cpx #$0F                  ; Compare X to hex $0F, decimal 15
   bne LoadSpritesLoop       ; Branch to LoadSpritesLoop if compare was Not Equal to zero
@@ -191,7 +196,7 @@ LoadBackground:
   ;; we need to copy more that 256
   lda #LOW(background)  ; Get low byte of <background>
   sta backgroundLo      ; Store it in <backgroundLo>
-  lda #HIGH(background) ; Get hihg byte of <background>
+  lda #HIGH(background) ; Get high byte of <background>
   sta backgroundHi      ; Store it in <backgroundHi>
 
   ;; 960 bytes = $03C0
@@ -200,48 +205,57 @@ LoadBackground:
   lda #$03
   sta counterHi
 
-  ldy #$00; keep y zero, we jut need y to be init to 0 for indirect index mode to work in the square bracket
-
+  ldy #$00                ; Y will always be 0, we just need it to be initialized
+                          ; to 0 ; so indirect index mode works in the square
+                          ; bracket. That is, "lda [backgroundLo], y" works, but
+                          ; simply "lda [backgroundLo]" doesn't.
 LoadBackgroundLoop:
-  LDA [backgroundLo], y ; load data from background
-  STA PPUDATA             ; write to PPU data port to copy to background data (tinyurl.com/NES-PPUDATA)
-  LDA backgroundLo      ; load the low byte of the background address into A
-  CLC                   ; clear the carry bit
-  ADC #$01              ; add 1 to A
-  STA backgroundLo      ; store A back into the mem addr
-  LDA backgroundHi      ; load the high byte of the background address into A
-  ADC #$00              ; add 0, but if there is a carry (overflow) add 1
-  STA backgroundHi      ; inc poitner to the next byte if necessary
+  lda [backgroundLo], y   ; load data from background
+  sta PPUDATA             ; write to PPU data port to copy to background data
+                          ; tinyurl.com/NES-PPUDATA
 
-  LDA counterLo         ; load the counter low byte
-  SEC                   ; set cary flag
-  SBC #$01              ; subtract with carry by 1
-  STA counterLo         ; store the low byte of the counter
-  LDA counterHi         ; load the high byte
-  SBC #$00              ; sub 0, but there is a carry
-  STA counterHi       ; decrement the loop counter
+  clc                     ; clear the carry bit
+  lda backgroundLo        ; A = backgroundLo
+  adc #$01                ; A++
+  sta backgroundLo        ; backgroundLo = A
 
-  LDA counterLo         ; load the low byte
-  CMP #$00              ; see if it is zero, if not loop
+  lda backgroundHi        ; A = backgroundHi
+  adc #$00                ; add 0, but if there is a carry (overflow) add 1
+  sta backgroundHi        ; inc pointer to the next byte if necessary
+  ;; This basically functions as 2 nested FOR loops
+  ;; for(backgroundHi = 0; ; backgroundHi++)
+  ;;     for(backgroundLo = 0; ; backgroundLo++)
+
+  lda counterLo           ; load the counter low byte
+  SEC                     ; set cary flag
+  SBC #$01                ; subtract with carry by 1
+  STA counterLo           ; store the low byte of the counter
+  LDA counterHi           ; load the high byte
+  SBC #$00                ; sub 0, but there is a carry
+  STA counterHi           ; decrement the loop counter
+
+  LDA counterLo           ; load the low byte
+  CMP #$00                ; see if it is zero, if not loop
   BNE LoadBackgroundLoop
   LDA counterHi
-  CMP #$00              ; see if the high byte is zero, if not loop
-  BNE LoadBackgroundLoop  ; if the loop counter isn't 0000, keep copying
+  CMP #$00                ; see if the high byte is zero, if not loop
+  BNE LoadBackgroundLoop  ; if the loop counter isn't 0, keep copying
 
 LoadAttribute:
-  LDA PPUSTATUS             ; read PPU status to reset the high/low latch
-  LDA #$23
-  STA PPUADDR             ; write the high byte of $23C0 address
-  LDA #$C0
-  STA PPUADDR             ; write the low byte of $23C0 address
-  LDX #$00              ; start out at 0
+  lda PPUSTATUS           ; read PPU status to reset the high/low latch
+  lda #$23                ; A = 0x23
+  sta PPUADDR             ; write the high byte of $(23)C0 address
+  lda #$C0                ; A = 0xC0
+  sta PPUADDR             ; write the low byte of $23(C0) address
+
+  ldx #$00                ; start out at 0
 LoadAttributeLoop:
-  LDA attribute, x      ; load data from address (attribute + the value in x)
-  STA PPUDATA             ; write to PPU Data (tinyurl.com/NES-PPUDATA)
-  INX                   ; X = X + 1
-  CPX #$40              ; Compare X to hex $40, decimal 64
-  BNE LoadAttributeLoop  ; Branch to LoadAttributeLoop if compare was Not Equal to zero
-                        ; if compare was equal to 128, keep going down
+  lda attribute, x        ; A = attribute + X
+  sta PPUDATA             ; write to PPU Data (tinyurl.com/NES-PPUDATA)
+  inx                     ; X = X + 1
+  cpx #$40                ; Compare X to hex $40, decimal 64
+  bne LoadAttributeLoop   ; Branch to LoadAttributeLoop if compare was Not Equal to zero
+                          ; if compare was equal to 64, keep going down
 
   lda #%10010000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 1
   ;     VPHBSINN
@@ -293,7 +307,7 @@ InitialzeState:
   lda #$C8
   sta ground    ; ground = 0xC8 = 200
 
-  lda #$03
+  lda #$02
   sta gravity   ; gravity = 3
 
 Loop:
@@ -311,12 +325,12 @@ NMI: ; Non-Maskable Interrupt (draws screen)
 
   ;; Load graphics into PPU from the memory
   lda #$00
-  sta OAMADDR   ; set the low byte (00) of the RAM address (tinyurl.com/NES-OAMADDR)
+  sta OAMADDR   ; set the low byte $02(00) of the RAM address (tinyurl.com/NES-OAMADDR)
   lda #$02
-  sta OAMDMA    ; set the high byte (02) of the RAM address, start the transfer (tinyurl.com/NES-OAMDMA)
+  sta OAMDMA    ; set the high byte $(02)00 of the RAM address, start the transfer (tinyurl.com/NES-OAMDMA)
 
-  jsr Draw   ; Jump to subroutine Draw (and then return here)
-  jsr Update ; Jump to subroutine Update (and then return here)
+  jsr Draw      ; Jump to subroutine Draw (and then return here)
+  jsr Update    ; Jump to subroutine Update (and then return here)
 
   ;; Scroll stuff
   ;; Music stuff
@@ -329,7 +343,7 @@ NMI: ; Non-Maskable Interrupt (draws screen)
   rti        ; Return from interrupt
 
 Draw:
-  jsr DrawPlayer        ; Jump to subroutine DrawPlayer (and then return here)
+  jsr DrawSprites  ; Jump to subroutine DrawSprites (and then return here)
 
   ; TODO: Changing this also doesn't seem to have any effect
   ; This is the PPU clean up section, so rendering the next frame starts properly.
@@ -350,7 +364,7 @@ Draw:
   ;                vertical blanking interval (0: off; 1: on)
   sta PPUCTRL      ; tinyurl.com/NES-PPUCTRL
 
-  lda #%00011110   ; enable sprites, enable background, no clipping on left side
+  lda #%00011100   ; enable sprites, enable background, no clipping on left side
   ;     BGRsbMmG
   ;     ||||||||
   ;     |||||||+-- Greyscale (0: normal color, 1: produce a greyscale display)
@@ -361,7 +375,7 @@ Draw:
   ;     ||+------- Emphasize red*
   ;     |+-------- Emphasize green*
   ;     +--------- Emphasize blue*
-  ; * NTSC colors. PAL and Dendy swaps green and red
+  ; * NTSC colors. PAL and Dendy swap green and red
   sta PPUMASK      ; tinyurl.com/NES-PPUMASK
 
   bit PPUSTATUS      ; tinyurl.com/NES-PPUSTATUS
@@ -375,35 +389,64 @@ Draw:
 
 ;;;;;;;;;;;;;;;;;;;;;
 ; Draw Sprites
+DrawSprites:
+
 DrawPlayer:
-  ldx #$00              ; start at 0 or $10
-  ldy #$00              ; start at 0
+  ldx #$00              ; start X at 0
+  ldy #$00              ; start Y at 0
 DrawPlayerLoop:
   clc                          ; Clear Carry Flag
-  lda playerspriteoffset, y    ; add player x with sprite offset
-  adc playerx                  ; playeroffset[0] + playerx 
-  iny                          ; increment sprite offset coutner
-  STA $0203, x                 ; store into RAM address ($0203 + x)
+  lda squarespriteoffset, y    ; add player x with sprite offset
+  adc playerx                  ; playeroffset[0] + playerx
+  sta $0203, x                 ; store into RAM address ($0203 + x)
+  iny                          ; increment sprite offset counter
+
   clc                          ; Clear Carry Flag
-  LDA playerspriteoffset, y   ; add player y with sprite offset
-  ADC playery
-  INY
-  STA $0200, x          ; store into RAM address ($0200 + x)
-  inx                   ; X = X + 4 loop to the next sprite
+  lda squarespriteoffset, y    ; add player y with sprite offset
+  adc playery
+  sta $0200, x                 ; store into RAM address ($0200 + x)
+
+  iny
+  inx                          ; X = X + 4 loop to the next sprite
   inx
   inx
   inx
   cpx #$20              ; Compare X to hex $20, decimal 32 meaning all 4 Player sprites done
-  bne DrawPlayerLoop    ; Branch to LoadSpritesLoop if compare was Not Equal to zero
-                        ; if compare was equal to 28, keep going down
-  rts                   ; Return from subroutine
+  bne DrawPlayerLoop    ; Branch to DrawPlayerLoop if compare was not 32
+                        ; if compare was equal to 32, keep going down
+
+DrawCat:
+  ldx #$00              ; start X at 0
+  ldy #$00              ; start Y at 0
+DrawCatLoop:
+  clc                          ; Clear Carry Flag
+  lda squarespriteoffset, y    ; add cat x with sprite offset
+  adc #$20                     ; squarespriteoffset[0] + CAT X
+  sta $0213, x                 ; store into RAM address ($0203 + x)
+  iny                          ; increment sprite offset counter
+
+  clc                          ; Clear Carry Flag
+  lda squarespriteoffset, y    ; add cat y with sprite offset
+  adc #$C8
+  sta $0210, x                 ; store into RAM address ($0200 + x)
+
+  iny
+  inx                          ; X = X + 4 loop to the next sprite
+  inx
+  inx
+  inx
+  cpx #$20              ; Compare X to hex $20, decimal 32 meaning all 4 Player sprites done
+  bne DrawCatLoop       ; Branch to DrawCatLoop if compare was not 32
+                        ; if compare was equal to 32, keep going down
+
+  rts                   ; Return from DrawSprites
 
 Update:
   jsr LatchController
   jsr PollController
   jsr ReadLeft
   jsr ReadRight
-  jsr ReadA
+  jsr ReadUp
   inc loopCount             ; loopCount++
   jsr UpdatePlayerPosition
   rts
@@ -458,33 +501,22 @@ LatchController:
   STA JOYSTICK1    ; tell both the controllers to latch buttons
   rts
 
-;;;;;;;;;;;;;;;;;;
-; Read controller input into byte vector
-; 76543210
-; ||||||||
-; |||||||+- RIGHT button
-; ||||||+-- LEFT Button
-; |||||+--- DOWN Button
-; ||||+---- UP Button
-; |||+----- START Button
-; ||+------ SELECT Button
-; |+------- B Button
-; +-------- A Button
-
 PollController:
-  LDX #$00          ; 8 buttons total
+  ldx #$00          ; 8 buttons total
 PollControllerLoop:
-  LDA JOYSTICK1     ; player 1 - A
-  LSR A             ; shift right
+  lda JOYSTICK1     ; load joystick 1
+  lsr A             ; shift right
   ROL controller    ; rotate left button vector in mem location $0003
-  INX
-  CPX #$08
-  BNE PollControllerLoop
-  RTS
+  inx
+  cpx #$08
+  bne PollControllerLoop
+  rts
 
 ReadRight:
-  LDA controller       ; controller 1 - A button
+  lda controller
   and #%00000001       ; only look at bit 0
+; bit:     7   6   5   4   3   2   1   0
+; button:  A   B  Sel Sta Up Down Left Right
   beq ReadRightDone    ; branch to ReadRightDone if button is NOT pressed (0)
                        ; add instructions here to do something when button IS pressed (1)
   clc                  ; make sure the carry flag is clear
@@ -527,8 +559,10 @@ ReadRightDone:         ; handling this button is done
 
 
 ReadLeft:
-  LDA controller       ; controller 1 - B button
+  lda controller
   and #%00000010       ; only look at bit 1
+; bit:     7   6   5   4   3   2   1   0
+; button:  A   B  Sel Sta Up Down Left Right
   beq ReadLeftDone     ; branch to ReadLeftDone if button is NOT pressed (0)
                        ; add instructions here to do something when button IS pressed (1)
   lda $0203            ; load sprite X position ($0200 + 3)
@@ -570,30 +604,32 @@ ReadLeftDone:          ; handling this button is done
   rts
 
 
-ReadA:
-  LDA controller  ; controller 1 - B button
-  AND #%10000000  ; only look at bit 0
-  BEQ ReadADone   ; branch to ReadBDone if button is NOT pressed (0)
-                  ; add instructions here to do something when button IS pressed (1)  
-  LDA inAir
-  CMP #$01
-  BEQ ReadADone
+ReadUp:
+  lda controller  ; Get controller 1
+  and #%00001000  ; If Up is pressed
+; bit:     7   6   5   4   3   2   1   0
+; button:  A   B  Sel Sta Up Down Left Right
+  beq ReadUpDone   ; branch to ReadUpDone if button is NOT pressed (0)
+
+  lda inAir
+  cmp #$01         ; if player is in air, don't do jump again
+  beq ReadUpDone
 
   LDA ground
   STA playery
   LDA #$FA
   STA playervy
 
-  LDA #$01
-  STA inAir
-ReadADone:        ; handling this button is done
+  lda #$01
+  sta inAir       ; player is now in air
+ReadUpDone:       ; handling this button is done
   rts
 
 palette:
   ;; Background Palletes (0-3)
-  .db $08,$1A,$38,$18,  $08,$02,$38,$3C,  $08,$1C,$15,$14,  $08,$02,$38,$2A
-  ;;  Character Palletes (0-3)
-  .db $31,$0F,$33,$36,  $0F,$35,$36,$37,  $0F,$39,$3A,$3B,  $0F,$3D,$3E,$0F
+  .db $2A,$0F,$0F,$0F,  $25,$0F,$0F,$0F,  $0F,$0F,$0F,$0F,  $0F,$0F,$0F,$0F
+  ;;  Character Palletes (4-7)
+  .db $31,$0F,$33,$36,  $0F,$0F,$0F,$0F,  $0F,$0F,$0F,$0F,  $0F,$0F,$0F,$0F
   ;  $31 - blue (sky)
   ;  $0F - black (outlines)
   ;  $33 - purple (dog)
@@ -619,7 +655,7 @@ playersprite:
 ;   |+---------- Flip sprite horizontally
 ;   +----------- Flip sprite vertically
 
-playerspriteoffset:
+squarespriteoffset:
   ; On-screen offset
   ;    x    y
   .db $F8, $F8; (-8, -8)  (top left)
@@ -627,6 +663,15 @@ playerspriteoffset:
   .db $F8, $00; (-8,  0)  (bottom left)
   .db $00, $00; ( 0,  0)  (bottom right)
 
+catsprite:
+  ;   vert tile attr horiz
+  .db $80, $20, $00, $80   ; sprite 0  (top left)
+  .db $80, $21, $00, $88   ; sprite 1  (top right)
+  .db $88, $30, $00, $80   ; sprite 2  (bottom left)
+  .db $88, $31, $00, $88   ; sprite 3  (bottom right)
+
+
+;;; TODO: Why does altering background not affect anything? :c
 background:
   ; nametable 960 bytes long for the background
   .db $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11  ;;row 1
@@ -668,8 +713,8 @@ background:
   .db $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11  ;;row 1
   .db $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11  ;;all sky
 
-  .db $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11  ;;row 1
-  .db $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11  ;;all sky
+  .db $00,$01, $00,$01, $00,$01, $00,$01, $00,$01, $00,$01, $00,$01, $00,$01
+  .db $00,$01, $00,$01, $00,$01, $00,$01, $00,$01, $00,$01, $00,$01, $00,$01  ;;ground
 
   .db $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11  ;;row 1
   .db $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11, $11,$11  ;;all sky
@@ -719,17 +764,19 @@ background:
   .db $10,$10, $10,$10, $10,$10, $10,$10, $10,$10, $10,$10, $10,$10, $10,$10
   .db $10,$10, $10,$10, $10,$10, $10,$10, $10,$10, $10,$10, $10,$10, $10,$10  ;; dirt
 
-attribute:
-   ; 64 bytes following a nametable
-  .db $00,$00,$00,$00,  $00,$00,$00,$00
-  .db $00,$00,$00,$00,  $00,$00,$00,$00
-  .db $00,$00,$00,$00,  $00,$00,$00,$00
-  .db $00,$00,$00,$00,  $00,$00,$00,$00
 
-  .db $00,$00,$00,$00,  $00,$00,$00,$00
-  .db $00,$00,$00,$00,  $00,$00,$00,$00
-  .db $00,$00,$00,$00,  $00,$00,$00,$00
-  .db $00,$00,$00,$00,  $00,$00,$00,$00
+;;; TODO: Why does altering attribute not change anything? :c
+attribute:
+  ; 64 bytes following a nametable
+  .db $01,$01,$01,$01,  $02,$02,$02,$02
+  .db $01,$01,$01,$01,  $02,$02,$02,$02
+  .db $01,$01,$01,$01,  $02,$02,$02,$02
+  .db $01,$01,$01,$01,  $02,$02,$02,$02
+
+  .db $03,$03,$03,$03,  $00,$00,$00,$00
+  .db $03,$03,$03,$03,  $00,$00,$00,$00
+  .db $03,$03,$03,$03,  $00,$00,$00,$00
+  .db $03,$03,$03,$03,  $00,$00,$00,$00
 
 
 ;-----------------------------------------------------------;
@@ -738,7 +785,7 @@ attribute:
 
 ; .org means starting at $FFFA
 ; .dw means store dataword, in the NES that means 16 bits 2 bytes
-; stores in little endian order, superior ordering ;) least sig byte first
+; stores in little endian order, that is, least significant byte first
   .bank 1
   .org $FFFA     ; first of the three vectors starts here
 nescallback:
