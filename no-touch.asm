@@ -446,9 +446,24 @@ Update:
   jsr PollController
   jsr ReadLeft
   jsr ReadRight
+  jsr ReadBothHorizontal
   jsr ReadUp
   inc loopCount             ; loopCount++
   jsr UpdatePlayerPosition
+  rts
+
+ReadBothHorizontal:
+  clc
+  lda controller
+  and #%00000011       ; only look at bits 0,1
+; bit:     7   6   5   4   3   2   1   0
+; button:  A   B  Sel Sta Up Down Left Right
+  beq StopHorizontalMovement  ; branch if neither are being pressed
+  rts
+
+StopHorizontalMovement:
+  lda #$00
+  sta playervx
   rts
 
 UpdatePlayerPosition:
@@ -520,9 +535,8 @@ ReadRight:
   beq ReadRightDone    ; branch to ReadRightDone if button is NOT pressed (0)
                        ; add instructions here to do something when button IS pressed (1)
   clc                  ; make sure the carry flag is clear
-  lda playerx
-  adc #$02
-  sta playerx
+  lda #$01
+  sta playervx
 
   lda #$00
   cmp playerfacing     ; If player is already facing right, skip
@@ -553,7 +567,6 @@ ReadRight:
   lda #$11
   sta $020D    ; Bottom right tile
 
-
 ReadRightDone:         ; handling this button is done
   rts
 
@@ -565,11 +578,9 @@ ReadLeft:
 ; button:  A   B  Sel Sta Up Down Left Right
   beq ReadLeftDone     ; branch to ReadLeftDone if button is NOT pressed (0)
                        ; add instructions here to do something when button IS pressed (1)
-  lda $0203            ; load sprite X position ($0200 + 3)
   clc                  ; make sure the carry flag is clear
-  lda playerx
-  adc #$FE
-  sta playerx
+  lda #$FF
+  sta playervx
 
   lda #$01
   cmp playerfacing     ; If player is already facing left, skip
